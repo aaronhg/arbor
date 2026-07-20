@@ -6,8 +6,14 @@
 import { execFileSync } from 'node:child_process';
 
 export function extractJson(text, prefill = '') {
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/); // a fenced block wins if present
-  const src = prefill + (fence ? fence[1] : text);
+  // A fenced block wins if present — but pick one that actually CONTAINS an object (skip an illustrative
+  // ```js fence before the real ```json), and its content is already COMPLETE.
+  const fenced = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)].map((m) => m[1]).find((f) => f.includes('{'));
+  const candidate = fenced != null ? fenced : text;
+  // Only PREPEND the prefill when there is no '{' to anchor on — i.e. the reply is a genuine continuation
+  // from the prefilled brace. If the model echoed the whole object (or fenced it) despite the prefill, the
+  // '{' is already there; prepending another produces '{{…}' that never balances (the bug this replaced).
+  const src = candidate.includes('{') ? candidate : (prefill + candidate);
   const start = src.indexOf('{');
   if (start < 0) throw new Error('no JSON object in reply');
   let depth = 0, inStr = false, esc = false;

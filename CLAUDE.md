@@ -18,6 +18,15 @@ arbor drives its siblings; it does not vendor them — copse/coir are resolved a
 arbor is the **policy layer** of the family (`coir` · `copse` · `arbor`), split by one rule:
 **needs project files → coir · needs a running game → copse · has judgment/policy → arbor.**
 
+**Domain/project specifics are kept out — this is about the tool.** arbor is exercised against real client
+games, so their identifiers leak in easily: titles, project numbers, component and notification names, and
+genre vocabulary that gives away what they sell. When an example, fixture or comment needs a concrete
+name, invent a neutral one — or use the CC0 demo's (`DungeonGame`, `AttackBtn`), which exists precisely so
+the docs have something real to point at. Keep every measured NUMBER; the numbers are the evidence, the
+identity is not. Two arbor-specific places to watch, because no identifier scan finds them: **LLM prompts**
+must be assembled from runtime data rather than hardcoded examples, and **captured fixtures**
+(`test/contract/fixtures/`) carry whatever project they were recorded from.
+
 arbor OWNS everything that is a *decision* (what to test / whether it passed):
 - **the loop** — `runLoop` (harness.mjs): plan → copse `execute` → judge → maybe iterate. arbor owns the
   loop shape AND the verdict; copse's `execute` only reports FACTS, arbor decides what they mean.

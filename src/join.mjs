@@ -17,7 +17,19 @@ import { tailMatch } from './match.mjs';
  */
 export function coverageJoin(staticRows, runtimeRows) {
   const covered = [], blocked = [], unreached = [], ambiguous = [], uncertain = [], codeRegistered = [], codeOnly = [];
-  const live = (runtimeRows || []).filter(Boolean);
+  // Collapse duplicate (ref, method) live rows to ONE representative — the same button emitted twice (e.g.
+  // two ClickEvents to one handler, or a duplicate ref). Without this the shadowed twin never enters `exact`
+  // /`claims`/`consumed` and leaks into codeOnly at the end as a FALSE 'dead-button' (a wired, covered button
+  // reported red). method:null rows are kept as-is (they take the code-handler path, not the (ref,method) join).
+  const live = [];
+  const seenKey = new Set();
+  for (const r of (runtimeRows || [])) {
+    if (!r) continue;
+    if (r.method == null) { live.push(r); continue; }
+    const k = `${r.ref} ${r.method}`;
+    if (seenKey.has(k)) continue;   // a duplicate of one already kept — same button, drop it
+    seenKey.add(k); live.push(r);
+  }
   const exact = new Map(live.filter((r) => r.method != null).map((r) => [`${r.ref} ${r.method}`, r]));
   const consumed = new Set();
 

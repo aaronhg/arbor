@@ -1,0 +1,22 @@
+[
+  {
+    "nodePath": "fixture/Canvas/AttackBtn",
+    "method": "attack",
+    "component": "DungeonGame"
+  },
+  {
+    "nodePath": "fixture/Canvas/MenuBtn",
+    "method": "toggleMenu",
+    "component": "DungeonGame"
+  },
+  {
+    "nodePath": "fixture/Canvas/MenuPanel/CloseBtn",
+    "method": "closeMenu",
+    "component": "DungeonGame"
+  },
+  {
+    "nodePath": "fixture/Canvas/RestartBtn",
+    "method": "restart",
+    "component": "DungeonGame"
+  }
+]

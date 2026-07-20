@@ -36,6 +36,33 @@ test('a scene-only impact (no specific buttons) keeps ALL tests — can\'t be na
   assert.deepEqual(r.affected[0].hits, ['(scene changed — all kept)']);
 });
 
+test('#7 a MIXED impact (impactedScenes AND specific buttons) keeps ALL tests — the scene net wins', () => {
+  // Real coir output carries the host scene for a code impact; a scene can be affected beyond the buttons
+  // whose handlers changed, so keep-all is the safe resolution (narrowing risks missing a cross-flow effect).
+  const risk = { impactedButtons: [{ nodePath: 'home/Canvas/AttackBtn' }], impactedScenes: [{ path: 'scene/main.scene' }] };
+  const tests = [
+    { name: 'combat.json', script: { steps: [{ op: 'press', ref: 'Canvas/AttackBtn' }] } },
+    { name: 'unrelated.json', script: { steps: [{ op: 'press', ref: 'Canvas/NopeBtn' }] } },
+  ];
+  const r = affectedData(risk, tests);
+  assert.equal(r.sceneOnly, true);
+  assert.deepEqual(r.affected.map((a) => a.name).sort(), ['combat.json', 'unrelated.json']); // both kept
+  assert.deepEqual(r.skipped, []);
+});
+
+test('the button-narrow path: buttons impacted with NO scene → narrows to the tests that touch them', () => {
+  // the only case narrowing fires — a finer impact (e.g. a prefab-internal handler) with impactedScenes empty.
+  const risk = { impactedButtons: [{ nodePath: 'home/Canvas/AttackBtn' }], impactedScenes: [] };
+  const tests = [
+    { name: 'combat.json', script: { steps: [{ op: 'press', ref: 'Canvas/AttackBtn' }] } },
+    { name: 'unrelated.json', script: { steps: [{ op: 'press', ref: 'Canvas/NopeBtn' }] } },
+  ];
+  const r = affectedData(risk, tests);
+  assert.equal(r.sceneOnly, false);
+  assert.deepEqual(r.affected.map((a) => a.name), ['combat.json']);
+  assert.deepEqual(r.skipped, ['unrelated.json']);
+});
+
 test('an empty risk set (nothing impacted) skips everything', () => {
   const r = affectedData({ impactedButtons: [], impactedScenes: [] }, [{ name: 'a.json', script: { steps: [{ op: 'press', ref: 'X' }] } }]);
   assert.deepEqual(r.affected, []);

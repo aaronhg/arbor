@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "changed": [
+    {
+      "path": "scripts/DungeonGame.ts",
+      "type": "script",
+      "uuid": "d2fce766-7dac-44a7-bd95-717d0d79e68f"
+    }
+  ],
+  "impactedScenes": [
+    {
+      "path": "scene/fixture.scene",
+      "type": "scene"
+    }
+  ],
+  "impactedButtons": [
+    {
+      "scene": "scene/fixture.scene",
+      "nodePath": "fixture/Canvas/AttackBtn",
+      "method": "attack",
+      "component": "DungeonGame",
+      "reason": "DungeonGame.attack changed"
+    },
+    {
+      "scene": "scene/fixture.scene",
+      "nodePath": "fixture/Canvas/MenuBtn",
+      "method": "toggleMenu",
+      "component": "DungeonGame",
+      "reason": "DungeonGame.toggleMenu changed"
+    },
+    {
+      "scene": "scene/fixture.scene",
+      "nodePath": "fixture/Canvas/MenuPanel/CloseBtn",
+      "method": "closeMenu",
+      "component": "DungeonGame",
+      "reason": "DungeonGame.closeMenu changed"
+    },
+    {
+      "scene": "scene/fixture.scene",
+      "nodePath": "fixture/Canvas/RestartBtn",
+      "method": "restart",
+      "component": "DungeonGame",
+      "reason": "DungeonGame.restart changed"
+    }
+  ],
+  "unresolved": [],
+  "riskScore": 0.9
+}

@@ -5,7 +5,7 @@
   "description": "AI QA for canvas games — an agent explores your Cocos build against a design spec, over coir (static analysis) + copse (runtime driver).",
   "bin": { "arbor": "bin/arbor.mjs" },
   "exports": { ".": "./src/index.mjs" },
-  "scripts": { "test": "node --test src/*.test.mjs test/*.test.mjs" },
+  "scripts": { "test": "node --test src/*.test.mjs test/*.test.mjs test/contract/*.test.mjs" },
   "keywords": ["cocos", "qa", "testing", "llm", "agent", "coir", "copse"],
   "license": "MIT"
 }

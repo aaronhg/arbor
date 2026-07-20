@@ -162,3 +162,24 @@ test('coverageJoin: an EXACT 1-segment match still joins (min-overlap only block
   assert.equal(covered.length, 1);
   assert.equal(covered[0].via, 'exact');
 });
+
+// ── #9 · duplicate (ref, method) live rows must not leak a shadowed twin as a false dead-button ──
+test('#9 duplicate (ref,method) live rows collapse — the twin does NOT leak into codeOnly', () => {
+  const stat = [{ nodePath: 'Canvas/Btn', method: 'tap' }];
+  const run = [
+    { ref: 'Canvas/Btn', method: 'tap', interactable: true, reachable: true },
+    { ref: 'Canvas/Btn', method: 'tap', interactable: true, reachable: true }, // same button emitted twice
+  ];
+  const { covered, codeOnly } = coverageJoin(stat, run);
+  assert.equal(covered.length, 1, 'the button is covered once');
+  assert.equal(codeOnly.length, 0, 'the duplicate does NOT surface as a dead-button');
+});
+
+test('#9 a genuinely code-only duplicate still surfaces once (not zero, not twice)', () => {
+  const run = [
+    { ref: 'Canvas/Dupe', method: 'onTap', interactable: true, reachable: true },
+    { ref: 'Canvas/Dupe', method: 'onTap', interactable: true, reachable: true },
+  ];
+  const { codeOnly } = coverageJoin([], run); // no static row → unmatched
+  assert.equal(codeOnly.length, 1, 'collapsed to one bare/unknown button, not double-counted');
+});

@@ -3,11 +3,9 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { openDriver, coirCli } from '../driver.mjs';
-import { runLoop } from '../harness.mjs';
+import { runLoop, USAGE_ERR } from '../harness.mjs';   // share the ONE definition (was a diverged local copy)
 import { llm, USAGE, MODEL } from '../llm.mjs';
 import { resolvePath, readSpec } from '../config.mjs';
-
-const USAGE_ERR = /selector needs|no[- ]?component|bad[- ]?selector|:Comp\.member|is not a function|no such|cannot read/i;
 
 export async function impact(config, opts = {}) {
   const args = [coirCli(config), '-C', config._dir, 'impact'];
@@ -39,11 +37,18 @@ export async function impact(config, opts = {}) {
   const { cp, execute } = await openDriver(config, { headed: opts.headed });
   let out; try { await cp.reload(); out = await runLoop(cp, execute, agent, { context: { goal } }); } finally { await cp.close(); }
   const findings = out.rounds.flatMap((r) => (r.verdict && r.verdict.findings) || []);
-  const gate = [
-    ...(out.undriven || []).map((u) => ({ ref: u.ref, symptom: 'dead button (drove nothing)', confidence: 'high' })),
-    ...(out.unreachable || []).map((u) => ({ ref: u.ref, symptom: `unreachable (blocked by ${u.blockedBy})`, confidence: 'high' })),
-    ...(out.errored || []).filter((e) => !USAGE_ERR.test(e.error || '')).map((e) => ({ ref: e.ref, symptom: e.error, confidence: 'high' })),
-  ];
-  const all = [...findings, ...gate];
+  const all = [...findings, ...factsGate(out.facts)];
   return { mode: 'impact', url: config.url, model: MODEL, usage: { ...USAGE }, impacted: buttons, findings: all, summary: all.length ? `${all.length} issue(s) in the impacted flows` : 'impacted buttons all behaved', failed: all.length > 0 };
+}
+
+// The deterministic half of `impact`: the structural facts (dead / unreachable / genuinely-errored buttons)
+// as gate findings. Pure + exported so the "read out.facts, not out" contract is pinned by a test — reading
+// `out.undriven` (facts live under `out.facts`) had silently made this whole gate dead code.
+export function factsGate(facts) {
+  const f = facts || {};
+  return [
+    ...(f.undriven || []).map((u) => ({ ref: u.ref, symptom: 'dead button (drove nothing)', confidence: 'high' })),
+    ...(f.unreachable || []).map((u) => ({ ref: u.ref, symptom: `unreachable (blocked by ${u.blockedBy})`, confidence: 'high' })),
+    ...(f.errored || []).filter((e) => !USAGE_ERR.test(e.error || '')).map((e) => ({ ref: e.ref, symptom: e.error, confidence: 'high' })),
+  ];
 }

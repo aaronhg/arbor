@@ -26,11 +26,30 @@ export async function runLoop(cp, execute, agent, opts = {}) {
   return { rounds, snapshot, facts };
 }
 
-export const compactSteps = (raw) => raw.map((s) => ({ op: s.step.op, target: s.step.ref || s.step.sel, result: s.result?.value ?? (s.result?.ok === false ? s.result : 'ok') }));
+// The judge's evidence. Two rules the naive flatten got wrong, both of which HID the bug from the judge:
+//   • a read whose value is `null`/`undefined` must show as null/undefined, NOT the string 'ok' — a label
+//     that lies (shows nothing) is exactly the semantic bug the judge is asked to catch (`'value' in r`,
+//     not `??`, so a genuine null read survives).
+//   • structural signals the judge is told to reason about (`drove:'nothing'`, `wired:false`, engine-
+//     swallowed `errors`, an `unreachable` press) must be surfaced, not stripped down to 'ok'.
+export const compactSteps = (raw) => raw.map((s) => {
+  const r = s.result || {};
+  const o = { op: s.step.op, target: s.step.ref || s.step.sel };
+  o.result = ('value' in r) ? (r.value === undefined ? '(undefined)' : r.value) : (r.ok === false ? r : 'ok');
+  if (r.drove !== undefined) o.drove = r.drove;                                  // 'nothing' / ['touch'] — the fired:0 misread
+  if (r.wired === false) o.wired = false;                                        // a press into a button with no handler
+  if (r.unreachable) o.unreachable = r.unreachable;                             // a covered / off-screen button
+  if (r.errors && r.errors.length) o.errors = r.errors.map((e) => e.text || String(e)); // engine-swallowed throws
+  return o;
+});
 
-// A copse USAGE error (the agent wrote a malformed selector/op) proves nothing about the game — it's
-// the agent flubbing the test, i.e. inconclusive, NOT a defect. A real pageerror/throw IS a defect.
-const USAGE_ERR = /selector needs|no[- ]?component|bad[- ]?selector|unresolved|unknown op|unsupported[- ]?op|:Comp\.member|is not a function|no such|cannot read/i;
+// A copse USAGE error (the agent wrote a malformed selector/op) proves nothing about the game — it's the
+// agent flubbing the test, i.e. inconclusive, NOT a defect. A real pageerror/throw IS a defect.
+// CRITICAL: match ONLY copse's own grammar-rejection vocabulary, never generic JS error text. `cannot read`
+// / `is not a function` / `no such` are the MOST COMMON real game crashes; matching them here silently
+// downgraded genuine null-derefs to "inconclusive" — a missed bug, the one thing this tool must never do.
+// Exported so impact.mjs shares the single definition instead of a drifting copy.
+export const USAGE_ERR = /selector needs|no[- ]?component|bad[- ]?selector|unresolved|unknown[- ]?op|unsupported[- ]?op|:Comp\.member/i;
 
 export function agentFor(scenario, surface) {
   return {
@@ -46,13 +65,14 @@ export function agentFor(scenario, surface) {
   };
 }
 
-// one scenario run → a normalized finding. Drives copse's `execute` via arbor's own runLoop, then reads
-// the FACTS (out.facts.*) — arbor owns the verdict, copse just reported what happened.
-export async function runAgent(cp, scenario, execute, surface) {
-  let out;
-  try { out = await runLoop(cp, execute, agentFor(scenario, surface), { context: { goal: scenario.goal } }); }
-  catch (e) { return { id: scenario.id, bug: scenario.bug, kind: scenario.kind, pins: scenario.pins, detected: false, by: 'error', reason: `harness/LLM error: ${e.message}`, raw: [] }; }
-  const raw = out.rounds.flatMap((r) => r.steps);
+// THE VERDICT — pure over a runLoop result + the scenario. This is arbor's whole reason to exist (copse
+// only reports facts; arbor decides what they mean), so it's extracted from runAgent to be testable
+// WITHOUT a browser or an LLM: feed a synthetic `{rounds, facts}` and assert detected/by/reason.
+//   detected  = the judge said 'bug'  OR  a real (non-usage) error fact  OR  a structural fact
+//               (undriven/unreachable) — the last is UNCONDITIONAL (a dead button is a defect always).
+//   usageErrs = copse rejected the agent's own malformed step (USAGE_ERR) → inconclusive, not a defect.
+export function classify(out, scenario) {
+  const raw = out.rounds.flatMap((r) => r.steps || []);
   const gameErrs = (out.facts.errored || []).filter((e) => !USAGE_ERR.test(e.error || ''));
   const usageErrs = (out.facts.errored || []).filter((e) => USAGE_ERR.test(e.error || ''));
   const errReasons = gameErrs.map((e) => `${e.ref}: ${e.error}`);
@@ -63,13 +83,33 @@ export async function runAgent(cp, scenario, execute, surface) {
   const bugReasons = out.rounds.filter((r) => r.verdict && r.verdict.verdict === 'bug').map((r) => r.verdict.reason);
   const judgeInconclusive = out.rounds.some((r) => r.verdict && r.verdict.verdict === 'inconclusive');
   const inconclusive = judgeInconclusive || usageErrs.length > 0;
-  const structCounts = scenario.kind === 'gate' && structReasons.length > 0; // dead/blocked = the point of a gate scenario
+  const structCounts = structReasons.length > 0; // UNCONDITIONAL — a dead/unreachable button is a defect in ANY scenario kind (copse's driveGate/reachableGate never gated on kind:'gate')
   const detected = bugReasons.length > 0 || errReasons.length > 0 || structCounts;
   const by = bugReasons.length ? 'judge' : (errReasons.length || structCounts) ? 'gate' : inconclusive ? 'inconclusive' : '—';
+  // SOFT signals copse gathered (and pays screenshots for): a press it couldn't confirm reachable, or a
+  // node the logic diff showed but that didn't render. Never a hard `detected` (fail-loud, not fail), but
+  // "fail-loud uncertainty reaches the report instead of a silent pass" — so they surface in `reason` and
+  // as fields, rather than being dropped on the floor (which discarded them AND wasted copse's screenshots).
+  const uncertain = out.facts.uncertain || [];
+  const visual = out.facts.visual || [];
+  const softReasons = [
+    ...uncertain.map((u) => `${u.ref}: ${u.why} (verify)`),
+    ...visual.map((v) => `${v.node}: shown but not drawn (${v.reason})`),
+  ];
   const reason = [...bugReasons, ...errReasons, ...(structCounts ? structReasons : [])].join('; ')
-    || (inconclusive ? 'inconclusive: ' + [...usageErrs.map((e) => `agent op error: ${e.error}`), ...out.rounds.map((r) => r.verdict && r.verdict.reason).filter(Boolean)].join('; ') : 'no issue found');
+    || (inconclusive ? 'inconclusive: ' + [...usageErrs.map((e) => `agent op error: ${e.error}`), ...out.rounds.map((r) => r.verdict && r.verdict.reason).filter(Boolean)].join('; ')
+      : softReasons.length ? 'verify: ' + softReasons.join('; ')
+        : 'no issue found');
   const rationale = out.rounds.map((r) => r.rationale).filter(Boolean).join(' | ');
-  return { id: scenario.id, bug: scenario.bug, kind: scenario.kind, pins: scenario.pins, detected, by, reason, rationale, raw };
+  return { id: scenario.id, bug: scenario.bug, kind: scenario.kind, pins: scenario.pins, detected, by, reason, rationale, uncertain, visual, raw };
+}
+
+// one scenario run → a normalized finding. Drives copse's `execute` via arbor's own runLoop, then classifies.
+export async function runAgent(cp, scenario, execute, surface) {
+  let out;
+  try { out = await runLoop(cp, execute, agentFor(scenario, surface), { context: { goal: scenario.goal } }); }
+  catch (e) { return { id: scenario.id, bug: scenario.bug, kind: scenario.kind, pins: scenario.pins, detected: false, by: 'error', reason: `harness/LLM error: ${e.message}`, raw: [] }; }
+  return classify(out, scenario);
 }
 
 // F5 — serialize a finding into a deterministic `copse run` tripwire (or null if not freezable)
@@ -90,7 +130,10 @@ export function aggregate(runs) {
   const byId = new Map();
   for (const r of runs) { if (!byId.has(r.id)) byId.set(r.id, []); byId.get(r.id).push(r); }
   const scenarios = [...byId.values()].map((rs) => {
-    const N = rs.length, detections = rs.filter((r) => r.detected).length, need = Math.ceil(N / 2);
+    // STRICT majority (> half), not ceil(N/2): for even N, ceil(N/2)===N/2 would certify a 50% detector
+    // as `stable` (never flaky) and then FREEZE it into a tripwire that flakes in CI forever. floor(N/2)+1
+    // equals ceil(N/2) for odd N, so odd-run behaviour is unchanged.
+    const N = rs.length, detections = rs.filter((r) => r.detected).length, need = Math.floor(N / 2) + 1;
     return {
       id: rs[0].id, bug: rs[0].bug, kind: rs[0].kind, runs: N, detections, rate: detections / N,
       stable: detections >= need, flaky: detections > 0 && detections < need,

@@ -1,0 +1,22 @@
+name: CI
+
+# Test on every push to main and every PR — so arbor's suite GATES changes instead of only running when
+# someone runs `npm test` locally. arbor has zero dependencies (nothing to install) and the pure tests
+# (config / coverage / join / select / match / evalstore) are hermetic. The sibling-dependent CONTRACT
+# tests (pkg-resolve, the tailMatch cross-check) skip gracefully here because copse/coir aren't checked out
+# alongside — reversing THOSE into copse/coir's CI is a separate step (see the boundary-contract plan).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test

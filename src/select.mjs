@@ -25,7 +25,15 @@ export function drivenPaths(script) {
  */
 export function affectedData(risk, tests) {
   const riskPaths = ((risk && risk.impactedButtons) || []).map((b) => b.nodePath);
-  const sceneOnly = riskPaths.length === 0 && (((risk && risk.impactedScenes) || []).length > 0);
+  // Keep ALL tests whenever coir reports an impacted SCENE. Real coir output carries the host scene for
+  // any code impact, and a scene's behaviour can be affected BEYOND the individual buttons whose handlers
+  // changed (a script tweak alters shared state a different flow reads), so narrowing to the button hits
+  // would risk MISSING a cross-flow effect — the unsafe direction for a QA gate. The button-narrowing
+  // path fires only for a finer impact with NO scene. The gate's other lever — SKIP when the risk set is
+  // empty (a docs/README PR) — is unaffected, and is where the impact-scoping earns its keep.
+  // (A code review flagged the mixed scene+button case; keep-all is the resolution. The button-narrow path
+  // is still covered by select.test.mjs's crafted no-scene fixtures; the contract golden locks this one.)
+  const sceneOnly = (((risk && risk.impactedScenes) || []).length > 0);
   const affected = [], skipped = [];
   for (const t of tests || []) {
     const name = t.name || '?';
