@@ -7,6 +7,7 @@ import { join, resolve, dirname } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolvePath } from './config.mjs';
+import { assertCopse } from './contract.mjs';
 
 const readPkg = (root) => { try { return JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')); } catch (e) { throw new Error(`arbor: no readable package.json at ${root} — point driver.copse / analyzer.coir at the package root (${e.message})`); } };
 const condTarget = (v) => (typeof v === 'string' ? v : (v && (v.import || v.node || v.default)) || null); // conditional export object → a path
@@ -54,7 +55,10 @@ export async function openDriver(config, { headed = false } = {}) {
       + `If this is a Pixi game set engine:'pixi' in arbor.config.mjs; if Cocos, check the build is served. `
       + `Run \`copse doctor ${config.url}\` for the full report.`);
   }
-  return { cp, execute, caps: cp.capabilities };
+  // The contract check goes HERE, not at import time: the version travels on the live session's
+  // capabilities, and this is the one place every consumer path funnels through.
+  const caps = assertCopse(cp.capabilities, (config.driver && config.driver.copse) || 'driver.copse');
+  return { cp, execute, caps };
 }
 
 // Guard: throw a clear, actionable error when a mode needs a capability the connected engine lacks.

@@ -9,6 +9,7 @@ import { coirCli, copseCli } from '../driver.mjs';
 import { resolvePath } from '../config.mjs';
 import { affectedData } from '../select.mjs';
 import { coverage } from './coverage.mjs';
+import { assertCoirImpact } from '../contract.mjs';
 
 export async function gate(config, opts = {}) {
   const coir = coirCli(config), copse = copseCli(config);
@@ -21,7 +22,8 @@ export async function gate(config, opts = {}) {
   else if (opts.paths) impactArgs.push(...String(opts.paths).split(',').map((s) => s.trim()));
   else throw new Error('gate: need --patch <diff|-> or --paths a,b');
   impactArgs.push('-o', 'json');
-  const risk = JSON.parse(sh(impactArgs, input ? { input } : {}));
+  const risk = assertCoirImpact(JSON.parse(sh(impactArgs, input ? { input } : {})),
+    (config.analyzer && config.analyzer.coir) || 'analyzer.coir');
   const nB = (risk.impactedButtons || []).length, nS = (risk.impactedScenes || []).length;
   console.log(`impact — ${risk.changed.length} changed · ${nS} scene/prefab · ${nB} button(s) · risk ${risk.riskScore}`);
 

@@ -8,6 +8,7 @@ import { dirname } from 'node:path';
 import { resolvePath } from '../config.mjs';
 import { coirCli, openDriver, requireCapability } from '../driver.mjs';
 import { coverageJoin } from '../join.mjs';
+import { assertCoirClickmap } from '../contract.mjs';
 
 const idOf = (o) => `${o.nodePath || o.ref}::${o.method ?? 'null'}`;
 
@@ -26,7 +27,9 @@ export const diffBaseline = (base, findings, coveredIds) => {
 async function runCoverage(config, { headed } = {}) {
   const rowsFile = resolvePath(config, config.coverage.rows || 'ci/coir-rows.json');
   mkdirSync(dirname(rowsFile), { recursive: true }); // the rows dir may not exist yet (e.g. a fresh `arbor init` scaffold)
-  const staticRows = JSON.parse(execFileSync('node', [coirCli(config), '-C', config._dir, 'clickmap', config.scene, '-o', 'json'], { encoding: 'utf8', maxBuffer: 64 << 20 }));
+  const staticRows = assertCoirClickmap(
+    JSON.parse(execFileSync('node', [coirCli(config), '-C', config._dir, 'clickmap', config.scene, '-o', 'json'], { encoding: 'utf8', maxBuffer: 64 << 20 })),
+    (config.analyzer && config.analyzer.coir) || 'analyzer.coir');
   writeFileSync(rowsFile, JSON.stringify(staticRows)); // keep the static rows on disk for inspection/debugging
   const { cp, caps } = await openDriver(config, { headed });
   try {
